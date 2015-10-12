@@ -1,0 +1,46 @@
+##################################################################################### 
+########## Basic workflow for YeATS, this is still not release ready. There are
+########## several manual steps. 
+##################################################################################### 
+
+## One can use bwa to eliminate transcripts not from the genome 
+bwa index $genome
+bwa mem $genome $initialfileuniq > ! $initialfileuniqsam
+samtools view -f4 -S $initialfileuniqsam  > ! $initialfileuniqsam.unmapped.genome.sam
+samtools view -F4 -S $initialfileuniqsam  > ! $initialfileuniqsam.mapped.genome.sam
+
+
+
+## This removes replicated fasta - and creates a per fasta file in the environment dir FASTADIR
+uniquifyFasta.pl -in <initialfile.fa> -out <uniq.fa> -write 1
+
+
+
+## gets 1) orfs in ORF 
+##      2) the longest 3 ORFS for each transcript in FASTADIR_ORF
+##      3) the longest ORF in FASTADIR_JUSTONLONGEST/
+orfprocessList.csh <uniq.list>
+
+
+
+## this is a custom schedule scripts which sleep in between firing commands
+## We blast the 3 ORFS to subset of protein fastas from plants.
+## This runs in a couple of hours in a 16 GB/ 16 core machine.
+setupCommandsFromListAndSchedule.pl -lis list.transcriptome.orf -out outfile -sleep 10 -inter 1000 -string 'blastp -db DB/CDNAdatasetfromplants.fa -query FASTADIR_ORF/$i.ALL.1.fasta -out BLASTOUT_ORF/$i.blast.nt '
+
+
+## this now ranks the ORFS - results are in a directory called ANN
+setupCommandsFromListAndSchedule.pl -lis list.transcriptome.orf -out fff -sleep 3 -inter 100 -string 'parseWebBlastOuts.pl -outf out.tmp -tr $i -cutoff 1E-8 -blast BLASTOUT_ORF -orfdir FASTADIR_ORF -ver 0 '
+
+
+
+#### Program for merging TRS...
+
+# this prints comands in joinscript.1  joinscript.2  
+joinTRS.csh DB/DBFastabestMerged MERGEDALL100k
+ 
+# these commands ensure that the merged TRS increase the balstscore when merged
+setupCommandsFromListAndSchedule.pl -lis merge.list -out blastformerge -sleep 2 -inter 7 -string 'blastp -db DB/plantpep.fasta -query FASTADIR_ORFBEST/$i.ALL.1.fasta -out BLASTOUT_AA//$i.blast.nt '
+
+
+
